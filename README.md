@@ -25,7 +25,9 @@ vendored dependencies.
 1. Increase the `ulimit` for the number of open files for your session to match
    your desired `-parallel` setting. E.g. for a `-parallel of 4000` run:
 
+```bash
    ulimit nofile 4000
+```
 
 1. Start the lookup process. In this example we configure `dnslol` to perform `A`
    and `TXT` queries for every domain in `input_domains.txt`, using two local
@@ -34,6 +36,7 @@ vendored dependencies.
    goroutines. Prometheus metrics will be exported on the debug address,
    `http://127.0.0.1:6363/metrics`.
 
+```bash
    dnslol \
     -checkA \
     -checkTXT \
@@ -42,16 +45,16 @@ vendored dependencies.
     -spawnInterval 15s \
     -debugAddr 127.0.0.1:6363 \
     < input_domains.txt
+```
 
 ## Metrics
 
 DNSLOL exports several [Prometheus](https://prometheus.io/) metrics on the configured `-debugAddr` that can be used to monitor the performance and results of a `dnslol` run.
 
-* `lookup_results` - A `CounterVec` with one `result` label indicating query
-   rcode or error results ecountered.
-* `attempts` - A `Counter` for the number of lookup attempts made.
-* `successes` - A `Counter` for the number of lookup successes.
-* `queryTime` - A `SummaryVec` for the amount of time queries take (expressed in
-   seconds) with one `type` label indicating the query type.
-* `commandLine` - A `GaugeVec` with the command line invocation with one `line`
-   label containing the `caalol` command line invocation for the run.
+| Metric Name      | Metric Type   | Labels    | Description           |
+| ---------------- |---------------|-----------|:----------------------|
+| `lookup_results` | Counter Vec   | `result`  | Result count per query rcode or error result |
+| `attempts`       | Counter       |           | Number of lookup attempts made |
+| `successes`      | Counter       |           | Number of lookup successes |
+| `queryTime`      | SummaryVec    | `type`    | Query duration (seconds) per type |
+| `commandLine`    | GaugeVec      | `line`    | Command line invocation of the `dnslol` tool |
