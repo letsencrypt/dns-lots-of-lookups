@@ -68,11 +68,25 @@ var (
 		"Lookup CAA records")
 )
 
+// parseServers splits a raw serversFlag string containing one or more DNS
+// server addresses, returning a slice of individual server addresses. If no
+// port is specified in the server addresses it is assumed to be port 53 (the
+// default DNS port).
+func parseServers(raw string) []string {
+	servers := strings.Split(raw, ",")
+	for i := range servers {
+		if !strings.Contains(servers[i], ":") {
+			servers[i] = servers[i] + ":53"
+		}
+	}
+	return servers
+}
+
 func main() {
 	flag.Parse()
 
 	// Split the -servers input and construct a selector to use
-	dnsServerAddresses := strings.Split(*serversFlag, ",")
+	dnsServerAddresses := parseServers(*serversFlag)
 	var selector dnslol.DNSServerSelector
 	var err error
 	if *roundRobinFlag {
