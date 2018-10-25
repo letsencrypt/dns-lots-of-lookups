@@ -61,6 +61,16 @@ var serversSplit []string
 var whichServer int
 var whichMu sync.Mutex
 
+func parseServers(raw string) []string {
+	servers := strings.Split(raw, ",")
+	for i := range servers {
+		if !strings.Contains(servers[i], ":") {
+			servers[i] = servers[i] + ":53"
+		}
+	}
+	return servers
+}
+
 // Pick a server, round-robin style. Concurrent-safe.
 func pickServer() string {
 	whichMu.Lock()
@@ -168,7 +178,7 @@ func main() {
 		"line": strings.Join(os.Args, " "),
 	}).Set(1)
 	flag.Parse()
-	serversSplit = strings.Split(*servers, ",")
+	serversSplit = parseServers(*servers)
 	var rLimit syscall.Rlimit
 	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 	if err != nil {
