@@ -195,7 +195,9 @@ func main() {
 	wg := sync.WaitGroup{}
 	go spawn(names, &wg)
 	http.Handle("/metrics", prom.Handler())
-	go http.ListenAndServe(*debugAddr, nil)
+	go func() {
+		_ = http.ListenAndServe(*debugAddr, nil)
+	}()
 	for _, name := range strings.Split(string(b), "\n") {
 		if name != "" {
 			wg.Add(1)
