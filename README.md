@@ -1,6 +1,8 @@
 # DNS Lots-of-Lookups (DNSLOL)
 
 [![Build Status](https://travis-ci.org/letsencrypt/dns-lots-of-lookups.svg?branch=master)](https://travis-ci.org/letsencrypt/dns-lots-of-lookups)
+[![GolangCI](https://golangci.com/badges/github.com/letsencrypt/dns-lots-of-lookups.svg)](https://golangci.com/r/github.com/letsencrypt/dns-lots-of-lookups)
+
 
 DNS Lots-of-Lookups (DNSLOL) is a small command line utility suitable for doing
 large-scale DNS lookups quickly. In particular DNSLOL is tailored towards doing
