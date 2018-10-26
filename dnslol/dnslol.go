@@ -108,7 +108,7 @@ func spawn(exp Experiment, dnsClient *dns.Client, names <-chan string, wg *sync.
 				for name := range names {
 					err := exp.runQueries(dnsClient, name)
 					if err != nil {
-						log.Fatal("Error running queries for %q: %v\n", name, err)
+						log.Fatalf("Error running queries for %q: %v\n", name, err)
 					}
 					wg.Done()
 				}
@@ -294,7 +294,7 @@ func Start(e Experiment, names <-chan string, wg *sync.WaitGroup) error {
 	go func() {
 		err := metricsServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
-			log.Fatal("metrics server failed: %v", err)
+			log.Fatalf("metrics server failed: %v", err)
 		}
 	}()
 
