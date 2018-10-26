@@ -33,7 +33,7 @@ vendored dependencies.
    and `TXT` queries for every domain in `input_domains.txt`, using two local
    recursive resolvers (one on port `1053`, and one on `1054`). It will
    gradually spawn new goroutines every `15s`, up to a maximum of `4000`
-   goroutines. Prometheus metrics will be exported on the debug address,
+   goroutines. Prometheus metrics will be exported on the metrics address,
    `http://127.0.0.1:6363/metrics`.
 
 ```bash
@@ -43,7 +43,7 @@ vendored dependencies.
     -servers 127.0.0.1:1053,127.0.0.1:1054 \
     -parallel 4000 \
     -spawnInterval 15s \
-    -debugAddr 127.0.0.1:6363 \
+    -metricsAddr 127.0.0.1:6363 \
     < input_domains.txt
 ```
 
