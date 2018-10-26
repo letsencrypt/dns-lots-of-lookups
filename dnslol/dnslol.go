@@ -254,7 +254,7 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, erro
 		}
 		// If there was an error, it was a failure that didn't produce an rcodeStr.
 		// Return an empty rcodeStr, a failure bool, and the error.
-		return "", false, fmt.Errorf("for %s: %s", typStr, err)
+		return "", false, err
 	} else if in.Rcode != dns.RcodeSuccess {
 		rcodeStr := dns.RcodeToString[in.Rcode]
 		// If the rcode wasn't a successful rcode, return its str form, a failure
