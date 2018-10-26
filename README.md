@@ -49,8 +49,8 @@ vendored dependencies.
 
 ## Database
 
-DNSLOL will write results to a MariaDB database. If you don't have one of these
-handy, a
+In the future, DNSLOL will support writing results to a MariaDB database. If you
+don't have one of these handy, a
 [`docker-compose.yml`](https://github.com/letsencrypt/dns-lots-of-lookups/blob/master/docker-compose.yml)
 file is provided that can quickly create a MariaDB container for `dnslol` to
 use.
