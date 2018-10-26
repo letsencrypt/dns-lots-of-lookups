@@ -1,3 +1,4 @@
+// The dnslol command is a command line utility for doing lots of DNS lookups.
 package main
 
 import (

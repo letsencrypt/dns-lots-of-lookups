@@ -8,6 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// dnsStats is a convenience struct for holding the individual Prometheus
+// metrics in a common object.
 type dnsStats struct {
 	attempts    *prom.CounterVec
 	successes   *prom.CounterVec

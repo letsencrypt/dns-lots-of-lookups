@@ -6,8 +6,8 @@
 
 DNS Lots-of-Lookups (DNSLOL) is a small command line utility suitable for doing
 large-scale DNS lookups quickly. In particular DNSLOL is tailored towards doing
-comparative analysis of the results of doing these lookups through differently
-configured recursive DNS resolvers.
+comparative analysis of the results of doing these lookups with different DNS
+servers.
 
 ## Install
 

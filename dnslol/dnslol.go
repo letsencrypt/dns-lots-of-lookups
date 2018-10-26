@@ -1,5 +1,5 @@
-// Package dnslol provides the ability to run many queries against configured
-// DNS recursive resolvers.
+// Package dnslol provides the ability to run many queries against multiple
+// DNS servers.
 package dnslol
 
 import (
@@ -16,22 +16,42 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
+// an Experiment holds settings related to the lookups that will be performed
+// when the Experiment is started with the `Start` function.
 type Experiment struct {
-	MetricsAddr   string
-	CommandLine   string
-	Selector      DNSServerSelector
-	Proto         string
-	Timeout       time.Duration
-	Parallel      int
-	SpawnRate     int
+	// The HTTP bind address for the Prometheus metrics server.
+	MetricsAddr string
+	// The command line that was used to construct the Experiment (e.g. the
+	// arguments passed to the `dnslol` command).
+	CommandLine string
+	// A DNSServerSelector for choosing server addresses for doing lookups.
+	Selector DNSServerSelector
+	// The protocol used to talk to selected DNS Servers ("tcp" or "udp").
+	Proto string
+	// A Duration after which DNS queries are considered to have timed out.
+	Timeout time.Duration
+	// The number of queries to perform in parallel.
+	Parallel int
+	// The rate at which to spawn new query goroutines.
+	SpawnRate int
+	// A Duration to sleep between starting SpawnRate new queries.
 	SpawnInterval time.Duration
-	CheckA        bool
-	CheckAAAA     bool
-	CheckTXT      bool
-	CheckCAA      bool
-	PrintResults  bool
+	// Whether or not to do queries for A records.
+	CheckA bool
+	// Whether or not to do queries for AAA records.
+	CheckAAAA bool
+	// Whether or not to do queries for `_acme-challenge.` TXT records.
+	CheckTXT bool
+	// Whether or not to do multiple CAA queries (e.g. w/ tree-climbing) for
+	// domains.
+	CheckCAA bool
+	// Whether or not to print lookup results to stdout.
+	PrintResults bool
 }
 
+// Valid checks whether a given Experiment is valid. It returns an error if the
+// Experiment has problems (missing mandatory fields, no query types selected,
+// etc).
 func (e Experiment) Valid() error {
 	if e.MetricsAddr == "" {
 		return errors.New("Experiment must have a non-empty MetricsAddr")
@@ -73,48 +93,41 @@ type query struct {
 	Type uint16
 }
 
-func (e Experiment) buildQueries(name string, servers []string) []query {
-	// queryPerServer returns a list with one query per server for the given name
-	// and type.
-	queryPerServer := func(name string, typ uint16) []query {
-		var results []query
-		for _, server := range servers {
-			results = append(results, query{
-				Name:   name,
-				Type:   typ,
-				Server: server,
-			})
+// spawn will create worker goroutines up to the Experiment's configured
+// Parallel setting. It creates new goroutines in batches based on the
+// Experiment's SpawnRate. After starting a new batch spawn will sleep for the
+// Experiment's configured SpawnInterval. Worker goroutines will call runQueries
+// for each name. Once the queries for a given name are completed the provided
+// waitgroup's Done function is called. If there is an error running queries
+// (not an error result from a query) log.Fatal is called to terminate the
+// experiment.
+func spawn(exp Experiment, dnsClient *dns.Client, names <-chan string, wg *sync.WaitGroup) {
+	for i := 0; i < exp.Parallel; {
+		for j := 0; j < exp.SpawnRate; i, j = i+1, j+1 {
+			go func() {
+				for name := range names {
+					err := exp.runQueries(dnsClient, name)
+					if err != nil {
+						log.Fatal("Error running queries for %q: %v\n", name, err)
+					}
+					wg.Done()
+				}
+			}()
 		}
-		return results
+		time.Sleep(exp.SpawnInterval)
 	}
-
-	var queries []query
-	if e.CheckA {
-		queries = append(queries,
-			queryPerServer(name, dns.TypeA)...)
-	}
-	if e.CheckAAAA {
-		queries = append(queries,
-			queryPerServer(name, dns.TypeAAAA)...)
-	}
-	if e.CheckTXT {
-		queries = append(queries,
-			queryPerServer(name, dns.TypeTXT)...)
-	}
-	if e.CheckCAA {
-		// We check CAA differently from other domains by splitting the individual
-		// domain labels up and mimicking CAA tree climbing by making a CAA query
-		// for each label for each server.
-		labels := strings.Split(name, ".")
-		for i := 0; i < len(labels); i++ {
-			queries = append(queries,
-				queryPerServer(strings.Join(labels[i:], "."), dns.TypeCAA)...)
-		}
-	}
-
-	return queries
 }
 
+// runQueries will build & execute queries for the given name based on the
+// Experiment's settings. The queries will be made with the provided dnsClient
+// and directed to DNS servers based on the Experiment's DNSServerSelector. An
+// error is returned if there is a problem selecting a server or if the provided
+// dnsClient is nil. Each query performed by runQueries  will increment the
+// "attempts" stat for the servers queried. A "result" stat will be incremented
+// based on the result of the query for the servers queried. Successful queries
+// will increment the "successes" stat for the servers queried. If the
+// Experiment has a true value for PrintResults each query result will be
+// printed to standard out.
 func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	if dnsClient == nil {
 		return errors.New("runQueries requires a non-nil dnsClient instance")
@@ -171,6 +184,57 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	return nil
 }
 
+// buildQueries creates queries for the given name, one per server. The types of
+// queries that are built depends on the Experiment's CheckA, CheckAAAA,
+// CheckTXT and CheckCAA settings.
+func (e Experiment) buildQueries(name string, servers []string) []query {
+	// queryPerServer returns a list with one query per server for the given name
+	// and type.
+	queryPerServer := func(name string, typ uint16) []query {
+		var results []query
+		for _, server := range servers {
+			results = append(results, query{
+				Name:   name,
+				Type:   typ,
+				Server: server,
+			})
+		}
+		return results
+	}
+
+	var queries []query
+	if e.CheckA {
+		queries = append(queries,
+			queryPerServer(name, dns.TypeA)...)
+	}
+	if e.CheckAAAA {
+		queries = append(queries,
+			queryPerServer(name, dns.TypeAAAA)...)
+	}
+	if e.CheckTXT {
+		queries = append(queries,
+			queryPerServer(name, dns.TypeTXT)...)
+	}
+	if e.CheckCAA {
+		// We check CAA differently from other domains by splitting the individual
+		// domain labels up and mimicking CAA tree climbing by making a CAA query
+		// for each label for each server.
+		labels := strings.Split(name, ".")
+		for i := 0; i < len(labels); i++ {
+			queries = append(queries,
+				queryPerServer(strings.Join(labels[i:], "."), dns.TypeCAA)...)
+		}
+	}
+
+	return queries
+}
+
+// queryOne performs one single query using the given dnsClient. For successful
+// queries (e.g. resulting in a RcodeSuccess) return that rcode string, a true
+// bool and a nil error. Unsuccessful queries either return an rcode string
+// other than RcodeSuccess, a false bool and a nil error or an empty rcode
+// string, a false bool and a non-nil error. In all cases the queryTimes latency
+// stat is updated for the server and query type performed.
 func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, error) {
 	// Build a DNS msg based on the query details
 	typStr := dns.TypeToString[q.Type]
@@ -213,6 +277,13 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, erro
 	return dns.RcodeToString[in.Rcode], true, nil
 }
 
+// Start will run the given Experiment by initializing and running a metrics
+// server and then spawning goroutines to process queries according to the
+// Experiment parameters. The spawned goroutines will read names to query from
+// the provided names channel. When a query work item for a name is completed
+// the spawned worker goroutines will call the provided WaitGroup's Done
+// function. An error is returned from Start if the given Experiment is not
+// valid.
 func Start(e Experiment, names <-chan string, wg *sync.WaitGroup) error {
 	if err := e.Valid(); err != nil {
 		return err
@@ -236,21 +307,4 @@ func Start(e Experiment, names <-chan string, wg *sync.WaitGroup) error {
 	go spawn(e, dnsClient, names, wg)
 
 	return nil
-}
-
-func spawn(exp Experiment, dnsClient *dns.Client, names <-chan string, wg *sync.WaitGroup) {
-	for i := 0; i < exp.Parallel; {
-		for j := 0; j < exp.SpawnRate; i, j = i+1, j+1 {
-			go func() {
-				for name := range names {
-					err := exp.runQueries(dnsClient, name)
-					if err != nil {
-						log.Fatal("Error running queries for %q: %v\n", name, err)
-					}
-					wg.Done()
-				}
-			}()
-		}
-		time.Sleep(exp.SpawnInterval)
-	}
 }

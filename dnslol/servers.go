@@ -7,7 +7,7 @@ import (
 
 var (
 	addressRequiredErr = errors.New(
-		"One or more DNS recursive resolver addresses must be provided")
+		"One or more DNS server addresses must be provided")
 )
 
 // DNSServerSelectors implement a way to PickServers to send queries to.
@@ -15,8 +15,7 @@ type DNSServerSelector interface {
 	PickServers() []string
 }
 
-// dnsServerConfig holds addresses of DNS recursive resolver servers that can be
-// queried.
+// dnsServerConfig holds addresses of DNS servers that can be queried.
 type dnsServerConfig struct {
 	addresses []string
 }
