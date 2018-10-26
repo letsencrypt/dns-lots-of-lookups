@@ -29,6 +29,7 @@ type Experiment struct {
 	CheckAAAA     bool
 	CheckTXT      bool
 	CheckCAA      bool
+	PrintResults  bool
 }
 
 func (e Experiment) Valid() error {
@@ -61,59 +62,66 @@ func (e Experiment) Valid() error {
 	return nil
 }
 
+// A query is a struct holding a name to query for, a type to request, and the
+// address of the DNS server to be queried.
+type query struct {
+	// Hostname/port of a DNS server to query
+	Server string
+	// The name to query the server for
+	Name string
+	// The DNS record type to ask the server for
+	Type uint16
+}
+
+func (e Experiment) buildQueries(name string, servers []string) []query {
+	// queryPerServer returns a list with one query per server for the given name
+	// and type.
+	queryPerServer := func(name string, typ uint16) []query {
+		var results []query
+		for _, server := range servers {
+			results = append(results, query{
+				Name:   name,
+				Type:   typ,
+				Server: server,
+			})
+		}
+		return results
+	}
+
+	var queries []query
+	if e.CheckA {
+		queries = append(queries,
+			queryPerServer(name, dns.TypeA)...)
+	}
+	if e.CheckAAAA {
+		queries = append(queries,
+			queryPerServer(name, dns.TypeAAAA)...)
+	}
+	if e.CheckTXT {
+		queries = append(queries,
+			queryPerServer(name, dns.TypeTXT)...)
+	}
+	if e.CheckCAA {
+		// We check CAA differently from other domains by splitting the individual
+		// domain labels up and mimicking CAA tree climbing by making a CAA query
+		// for each label for each server.
+		labels := strings.Split(name, ".")
+		for i := 0; i < len(labels); i++ {
+			queries = append(queries,
+				queryPerServer(strings.Join(labels[i:], "."), dns.TypeCAA)...)
+		}
+	}
+
+	return queries
+}
+
 func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	if dnsClient == nil {
 		return errors.New("runQueries requires a non-nil dnsClient instance")
 	}
-	type query struct {
-		Name string
-		Type uint16
-	}
-	var queries []query
-	if e.CheckA {
-		queries = append(queries, query{
-			Name: name,
-			Type: dns.TypeA,
-		})
-	}
-	if e.CheckAAAA {
-		queries = append(queries, query{
-			Name: name,
-			Type: dns.TypeAAAA,
-		})
-	}
-	if e.CheckTXT {
-		queries = append(queries, query{
-			Name: name,
-			Type: dns.TypeTXT,
-		})
-	}
-	if e.CheckCAA {
-		labels := strings.Split(name, ".")
-		for i := 0; i < len(labels); i++ {
-			queries = append(queries, query{
-				Name: strings.Join(labels[i:], "."),
-				Type: dns.TypeCAA,
-			})
-		}
-	}
 
-	for _, q := range queries {
-		err := e.query(dnsClient, q.Name, q.Type)
-		if err != nil {
-			return err
-		}
-	}
-	stats.results.With(prom.Labels{"result": "ok"}).Add(1)
-	return nil
-}
-
-func (e Experiment) query(dnsClient *dns.Client, name string, typ uint16) error {
-	if dnsClient == nil {
-		return errors.New("query requires a non-nil dnsClient instance")
-	}
-
-	// Pick some servers based on the Experiment's Selector
+	// Pick some servers based on the Experiment's Selector. It is expected to
+	// return one or more DNS server hostnames.
 	servers := e.Selector.PickServers()
 	if len(servers) == 0 {
 		// This shouldn't ever happen, but be defensive in case of a bug :-)
@@ -121,43 +129,88 @@ func (e Experiment) query(dnsClient *dns.Client, name string, typ uint16) error 
 			"Experiment selector returned zero DNS server addresses from PickServers")
 	}
 
-	// Make the requsted query against each of the servers picked
-	for _, serverAddr := range servers {
-		if err := e.queryOne(dnsClient, serverAddr, name, typ); err != nil {
-			return err
+	// Build the queries for this name for each of the nameservers
+	queries := e.buildQueries(name, servers)
+
+	// Run the built queries, populating the prometheus result stat according to
+	// the results
+	for _, q := range queries {
+		stats.attempts.With(prom.Labels{"server": q.Server}).Add(1)
+		resultLabels := prom.Labels{"server": q.Server}
+		resultType, success, err := e.queryOne(dnsClient, q)
+		// If the result was an error, put the error string in the result label
+		if err != nil {
+			resultLabels["result"] = err.Error()
+		} else if success {
+			// If the result was successful, increment the success stat and put the
+			// resultType in the result label
+			stats.successes.With(prom.Labels{"server": q.Server}).Add(1)
+			resultLabels["result"] = resultType
+		} else {
+			// Otherwise, if the result was not an error but wasn't a success just put
+			// the resultType in the resultLabels. Don't increment the successes stat.
+			resultLabels["result"] = resultType
 		}
+		// TODO(@cpu): This should be a separate function.
+		if e.PrintResults {
+			outcome := "bad"
+			if success {
+				outcome = "ok"
+			}
+			var line strings.Builder
+			fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s Result=%s",
+				q.Server, q.Name, dns.TypeToString[q.Type], resultType)
+			if err != nil {
+				fmt.Fprintf(&line, " Error=%s", err.Error())
+			}
+			fmt.Fprintf(&line, " Outcome=%s", outcome)
+			log.Printf("%s", line.String())
+		}
+		stats.results.With(resultLabels).Add(1)
 	}
 	return nil
 }
 
-func (e Experiment) queryOne(dnsClient *dns.Client, serverAddr, name string, typ uint16) error {
-	typStr := dns.TypeToString[typ]
+func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, error) {
+	// Build a DNS msg based on the query details
+	typStr := dns.TypeToString[q.Type]
 	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(name), typ)
-	in, rtt, err := dnsClient.Exchange(m, serverAddr)
-	// TODO(@cpu): This should have a label for the serverAddr we queried.
-	stats.queryTimes.With(prom.Labels{"type": typStr}).Observe(rtt.Seconds())
+	m.SetQuestion(dns.Fqdn(q.Name), q.Type)
+
+	// Query the server and record the time taken
+	in, rtt, err := dnsClient.Exchange(m, q.Server)
+	stats.queryTimes.With(prom.Labels{
+		"server": q.Server,
+		"type":   typStr}).Observe(rtt.Seconds())
 	if err != nil {
 		if ne, ok := err.(*net.OpError); ok && ne.Timeout() {
 			err = fmt.Errorf("timeout")
 		} else if _, ok := err.(*net.OpError); ok {
 			err = fmt.Errorf("net err")
 		}
-		// TODO(@cpu): This should have a label for the serverAddr we queried.
-		stats.results.With(prom.Labels{"result": err.Error()}).Add(1)
-		return fmt.Errorf("for %s: %s", typStr, err)
+		// If there was an error, it was a failure that didn't produce an rcodeStr.
+		// Return an empty rcodeStr, a failure bool, and the error.
+		return "", false, fmt.Errorf("for %s: %s", typStr, err)
 	} else if in.Rcode != dns.RcodeSuccess {
 		rcodeStr := dns.RcodeToString[in.Rcode]
-		// TODO(@cpu): This should have a label for the serverAddr we queried.
-		stats.results.With(prom.Labels{"result": rcodeStr}).Add(1)
-		return fmt.Errorf("for %s: %s", typStr, rcodeStr)
+		// If the rcode wasn't a successful rcode, return its str form, a failure
+		// bool, and no error.
+		return rcodeStr, false, nil
 	}
 	for _, answer := range in.Answer {
+		// We additionally check that CAA records don't have a case mismatch
+		//
+		// TODO(@cpu): This smells like something that should be behind
+		// a flag/Experiment bool.
 		if caaR, ok := answer.(*dns.CAA); ok && strings.ToLower(caaR.Tag) != caaR.Tag {
-			return fmt.Errorf("tag mismatch for %s: %s", strings.ToLower(caaR.Tag), caaR)
+			// If there was a case mismatch return no rcode Str, a failure bool, and
+			// a manufactured error.
+			return "", false, fmt.Errorf("tag mismatch for %s: %s", strings.ToLower(caaR.Tag), caaR)
 		}
 	}
-	return nil
+	// Otherwise everything went well! Return the rcode str, a true success bool
+	// and no error.
+	return dns.RcodeToString[in.Rcode], true, nil
 }
 
 func Start(e Experiment, names <-chan string, wg *sync.WaitGroup) error {
@@ -190,13 +243,9 @@ func spawn(exp Experiment, dnsClient *dns.Client, names <-chan string, wg *sync.
 		for j := 0; j < exp.SpawnRate; i, j = i+1, j+1 {
 			go func() {
 				for name := range names {
-					stats.attempts.Add(1)
 					err := exp.runQueries(dnsClient, name)
 					if err != nil {
-						fmt.Printf("%s: %s\n", name, err)
-					} else {
-						fmt.Printf("%s: ok\n", name)
-						stats.successes.Add(1)
+						log.Fatal("Error running queries for %q: %v\n", name, err)
 					}
 					wg.Done()
 				}

@@ -9,8 +9,8 @@ import (
 )
 
 type dnsStats struct {
-	attempts    prom.Counter
-	successes   prom.Counter
+	attempts    *prom.CounterVec
+	successes   *prom.CounterVec
 	queryTimes  *prom.SummaryVec
 	results     *prom.CounterVec
 	commandLine *prom.GaugeVec
@@ -18,22 +18,22 @@ type dnsStats struct {
 
 var (
 	stats = &dnsStats{
-		attempts: promauto.NewCounter(prom.CounterOpts{
+		attempts: promauto.NewCounterVec(prom.CounterOpts{
 			Name: "attempts",
 			Help: "number of lookup attempts",
-		}),
-		successes: promauto.NewCounter(prom.CounterOpts{
+		}, []string{"server"}),
+		successes: promauto.NewCounterVec(prom.CounterOpts{
 			Name: "successes",
 			Help: "number of lookup successes",
-		}),
+		}, []string{"server"}),
 		queryTimes: promauto.NewSummaryVec(prom.SummaryOpts{
 			Name: "queryTime",
 			Help: "amount of time queries take (seconds)",
-		}, []string{"type"}),
+		}, []string{"server", "type"}),
 		results: promauto.NewCounterVec(prom.CounterOpts{
 			Name: "results",
 			Help: "lookup results",
-		}, []string{"result"}),
+		}, []string{"server", "result"}),
 		commandLine: promauto.NewGaugeVec(prom.GaugeOpts{
 			Name: "commandLine",
 			Help: "command line",

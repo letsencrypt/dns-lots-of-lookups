@@ -68,6 +68,10 @@ var (
 		"checkCAA",
 		false,
 		"Lookup CAA records")
+	printResultsFlag = flag.Bool(
+		"print",
+		true,
+		"Print lookup results to stdout")
 )
 
 // checkUlimit checks the *parallelFlag value against the system RLIMIT_NOFILE
@@ -147,6 +151,7 @@ func main() {
 		CheckAAAA:     *checkAAAAFlag,
 		CheckTXT:      *checkTXTFlag,
 		CheckCAA:      *checkCAAFlag,
+		PrintResults:  *printResultsFlag,
 	}
 
 	// Read domain names from standard in
