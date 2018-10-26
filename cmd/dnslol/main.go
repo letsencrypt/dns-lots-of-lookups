@@ -2,12 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	_ "net/http/pprof"
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/letsencrypt/dns-lots-of-lookups/dnslol"
@@ -68,6 +70,34 @@ var (
 		"Lookup CAA records")
 )
 
+// checkUlimit checks the *parallelFlag value against the system RLIMIT_NOFILE
+// value controlling the number of files a process can have open. If the
+// *parallelFlag value is larger than the current RLIMIT_NOFILE an error is
+// returned. Allowing the experiment to proceed without fixing the ulimit will
+// result in running out of file handles.
+func checkUlimit() error {
+	var rLimit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+		return err
+	}
+	if *parallelFlag > int(rLimit.Cur) {
+		return fmt.Errorf(
+			`current ulimit for "nofile" lower than requested -parallel: %d vs %d"`,
+			rLimit.Cur, *parallelFlag)
+	}
+	return nil
+}
+
+// reverseName performs a label-wise reversal of the given domain name. E.g.
+// "com.google.www" -> "www.google.com".
+func reverseName(domain string) string {
+	labels := strings.Split(domain, ".")
+	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
+		labels[i], labels[j] = labels[j], labels[i]
+	}
+	return strings.Join(labels, ".")
+}
+
 // parseServers splits a raw serversFlag string containing one or more DNS
 // server addresses, returning a slice of individual server addresses. If no
 // port is specified in the server addresses it is assumed to be port 53 (the
@@ -85,6 +115,11 @@ func parseServers(raw string) []string {
 func main() {
 	flag.Parse()
 
+	// There's no point using a -parallel higher than ulimits allow
+	if err := checkUlimit(); err != nil {
+		log.Fatalf("Error: %v\n", err)
+	}
+
 	// Split the -servers input and construct a selector to use
 	dnsServerAddresses := parseServers(*serversFlag)
 	var selector dnslol.DNSServerSelector
@@ -98,6 +133,7 @@ func main() {
 		log.Fatalf("Error creating DNS server selector: %v\n", err)
 	}
 
+	// Construct an Experiment with the command line flag options
 	exp := dnslol.Experiment{
 		MetricsAddr:   *metricsAddrFlag,
 		CommandLine:   strings.Join(os.Args, " "),
@@ -113,6 +149,8 @@ func main() {
 		CheckCAA:      *checkCAAFlag,
 	}
 
+	// Read domain names from standard in
+	//
 	// TODO(@cpu): It would be better to stream stdin into the names channel so we
 	// don't have to consume the entire stdin input into memory at startup.
 	stdinBytes, err := ioutil.ReadAll(os.Stdin)
@@ -147,12 +185,4 @@ func main() {
 	// Close the names channel and wait for the experiment to be finished
 	close(names)
 	wg.Wait()
-}
-
-func reverseName(domain string) string {
-	labels := strings.Split(domain, ".")
-	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
-		labels[i], labels[j] = labels[j], labels[i]
-	}
-	return strings.Join(labels, ".")
 }
