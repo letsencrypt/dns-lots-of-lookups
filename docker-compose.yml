@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: "dnslol"
     networks:
       static-network:
-        ipv4_address: 10.10.10.1
+        ipv4_address: 10.10.10.2
 networks:
   static-network:
     ipam:
