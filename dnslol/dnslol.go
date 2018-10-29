@@ -147,29 +147,23 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	for _, q := range queries {
 		stats.attempts.With(prom.Labels{"server": q.Server}).Add(1)
 		resultLabels := prom.Labels{"server": q.Server}
-		resultType, success, err := e.queryOne(dnsClient, q)
+		err := e.queryOne(dnsClient, q)
+		outcome := "bad"
 		// If the result was an error, put the error string in the result label
 		if err != nil {
 			resultLabels["result"] = err.Error()
-		} else if success {
-			// If the result was successful, increment the success stat and put the
-			// resultType in the result label
-			stats.successes.With(prom.Labels{"server": q.Server}).Add(1)
-			resultLabels["result"] = resultType
 		} else {
-			// Otherwise, if the result was not an error but wasn't a success just put
-			// the resultType in the resultLabels. Don't increment the successes stat.
-			resultLabels["result"] = resultType
+			// If the result was successful, increment the success stat and put
+			// "ok" in the result label
+			stats.successes.With(prom.Labels{"server": q.Server}).Add(1)
+			resultLabels["result"] = "ok"
+			outcome = "ok"
 		}
 		// TODO(@cpu): This should be a separate function.
 		if e.PrintResults {
-			outcome := "bad"
-			if success {
-				outcome = "ok"
-			}
 			var line strings.Builder
-			fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s Result=%s",
-				q.Server, q.Name, dns.TypeToString[q.Type], resultType)
+			fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s ",
+				q.Server, q.Name, dns.TypeToString[q.Type])
 			if err != nil {
 				fmt.Fprintf(&line, " Error=%s", err.Error())
 			}
@@ -222,7 +216,9 @@ func (e Experiment) buildQueries(name string, servers []string) []query {
 // other than RcodeSuccess, a false bool and a nil error or an empty rcode
 // string, a false bool and a non-nil error. In all cases the queryTimes latency
 // stat is updated for the server and query type performed.
-func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, error) {
+//
+// TODO(@cpu): Update comment
+func (e Experiment) queryOne(dnsClient *dns.Client, q query) error {
 	// Build a DNS msg based on the query details
 	typStr := dns.TypeToString[q.Type]
 	m := new(dns.Msg)
@@ -235,22 +231,19 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, erro
 		"type":   typStr}).Observe(rtt.Seconds())
 	if err != nil {
 		if ne, ok := err.(*net.OpError); ok && ne.Timeout() {
-			err = fmt.Errorf("timeout")
+			return fmt.Errorf("timeout")
 		} else if _, ok := err.(*net.OpError); ok {
-			err = fmt.Errorf("net err")
+			return fmt.Errorf("net err")
 		}
-		// If there was an error, it was a failure that didn't produce an rcodeStr.
-		// Return an empty rcodeStr, a failure bool, and the error.
-		return "", false, err
+		return err
 	} else if in.Rcode != dns.RcodeSuccess {
+		// If the rcode wasn't a successful rcode, return an error with the rCode as
+		// the string
 		rcodeStr := dns.RcodeToString[in.Rcode]
-		// If the rcode wasn't a successful rcode, return its str form, a failure
-		// bool, and no error.
-		return rcodeStr, false, nil
+		return errors.New(rcodeStr)
 	}
-	// Otherwise everything went well! Return the rcode str, a true success bool
-	// and no error.
-	return dns.RcodeToString[in.Rcode], true, nil
+	// Otherwise everything went well! Return nil
+	return nil
 }
 
 // Start will run the given Experiment by initializing and running a metrics
