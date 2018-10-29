@@ -24,8 +24,8 @@ type Experiment struct {
 	// The command line that was used to construct the Experiment (e.g. the
 	// arguments passed to the `dnslol` command).
 	CommandLine string
-	// A DNSServerSelector for choosing server addresses for doing lookups.
-	Selector DNSServerSelector
+	// One or more DNS server addresses with port numbers
+	Servers []string
 	// The protocol used to talk to selected DNS Servers ("tcp" or "udp").
 	Proto string
 	// A Duration after which DNS queries are considered to have timed out.
@@ -56,8 +56,8 @@ func (e Experiment) Valid() error {
 	if e.CommandLine == "" {
 		return errors.New("Experiment must have a non-empty CommandLine")
 	}
-	if e.Selector == nil {
-		return errors.New("Experiment must have a non-nil Selector")
+	if len(e.Servers) < 1 {
+		return errors.New("Experiment must have at least one Servers address")
 	}
 	if e.Proto != "tcp" && e.Proto != "udp" {
 		return errors.New(`Experiment must have a Proto value of "tcp" or "udp"`)
@@ -117,30 +117,19 @@ func spawn(exp Experiment, dnsClient *dns.Client, names <-chan string, wg *sync.
 
 // runQueries will build & execute queries for the given name based on the
 // Experiment's settings. The queries will be made with the provided dnsClient
-// and directed to DNS servers based on the Experiment's DNSServerSelector. An
-// error is returned if there is a problem selecting a server or if the provided
-// dnsClient is nil. Each query performed by runQueries  will increment the
-// "attempts" stat for the servers queried. A "result" stat will be incremented
-// based on the result of the query for the servers queried. Successful queries
-// will increment the "successes" stat for the servers queried. If the
-// Experiment has a true value for PrintResults each query result will be
-// printed to standard out.
+// and directed to the Experiment's DNS Servers the. Each query performed by
+// runQueries will increment the "attempts" stat for the servers queried.
+// A "result" stat will be incremented based on the result of the query for the
+// servers queried. Successful queries will increment the "successes" stat for
+// the servers queried. If the Experiment has a true value for PrintResults each
+// query result will be printed to standard out.
 func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	if dnsClient == nil {
 		return errors.New("runQueries requires a non-nil dnsClient instance")
 	}
 
-	// Pick some servers based on the Experiment's Selector. It is expected to
-	// return one or more DNS server hostnames.
-	servers := e.Selector.PickServers()
-	if len(servers) == 0 {
-		// This shouldn't ever happen, but be defensive in case of a bug :-)
-		return errors.New(
-			"Experiment selector returned zero DNS server addresses from PickServers")
-	}
-
 	// Build the queries for this name for each of the nameservers
-	queries := e.buildQueries(name, servers)
+	queries := e.buildQueries(name)
 
 	// Run the built queries, populating the prometheus result stat according to
 	// the results
@@ -178,12 +167,12 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 // buildQueries creates queries for the given name, one per server. The types of
 // queries that are built depends on the Experiment's CheckA, CheckAAAA,
 // and CheckTXT settings.
-func (e Experiment) buildQueries(name string, servers []string) []query {
+func (e Experiment) buildQueries(name string) []query {
 	// queryPerServer returns a list with one query per server for the given name
 	// and type.
 	queryPerServer := func(name string, typ uint16) []query {
 		var results []query
-		for _, server := range servers {
+		for _, server := range e.Servers {
 			results = append(results, query{
 				Name:   name,
 				Type:   typ,

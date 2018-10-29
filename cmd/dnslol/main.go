@@ -25,10 +25,6 @@ var (
 		"servers",
 		"127.0.0.1:53",
 		"Comma-separated list of DNS servers")
-	roundRobinFlag = flag.Bool(
-		"round-robin",
-		false,
-		"Round-robin through servers instead of comparing queries between all servers")
 	timeoutFlag = flag.Duration(
 		"timeout",
 		30*time.Second,
@@ -123,22 +119,15 @@ func main() {
 
 	// Split the -servers input and construct a selector to use
 	dnsServerAddresses := parseServers(*serversFlag)
-	var selector dnslol.DNSServerSelector
-	var err error
-	if *roundRobinFlag {
-		selector, err = dnslol.NewRoundRobinSelector(dnsServerAddresses)
-	} else {
-		selector, err = dnslol.NewComparisonSelector(dnsServerAddresses)
-	}
-	if err != nil {
-		log.Fatalf("Error creating DNS server selector: %v\n", err)
+	if len(dnsServerAddresses) < 1 {
+		log.Fatalf("Error: you must specify at least one -servers value\n")
 	}
 
 	// Construct an Experiment with the command line flag options
 	exp := dnslol.Experiment{
 		MetricsAddr:   *metricsAddrFlag,
 		CommandLine:   strings.Join(os.Args, " "),
-		Selector:      selector,
+		Servers:       dnsServerAddresses,
 		Proto:         *protoFlag,
 		Timeout:       *timeoutFlag,
 		Parallel:      *parallelFlag,
