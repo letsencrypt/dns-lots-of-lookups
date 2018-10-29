@@ -119,9 +119,6 @@ func main() {
 
 	// Split the -servers input and construct a selector to use
 	dnsServerAddresses := parseServers(*serversFlag)
-	if len(dnsServerAddresses) < 1 {
-		log.Fatalf("Error: you must specify at least one -servers value\n")
-	}
 
 	// Construct an Experiment with the command line flag options
 	exp := dnslol.Experiment{
