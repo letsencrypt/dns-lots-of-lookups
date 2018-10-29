@@ -67,16 +67,15 @@ You can start the database by running:
 
 This will start a `dnslotsoflookups_db_1` container running MariaDB. A `dnslol`
 database user will be created with the password `dnslol`. This user will be
-granted superuser privileges for the `dnslol-results` database. Port `3333` of
-the host machine is mapped to the MariaDB instance in the
-`dnslotsoflookups_db_1` container.
+granted superuser privileges for the `dnslol-results` database. The database 
+will be listening on the private IP `10.10.10.1` on port `3303`.
 
 You can verify the database is running or perform manual queries using the
 `mysql` command line tool (You may need to install this command on your host
 machine separately if you don't already have it):
 
 ```bash
-    mysql -u dnslol -pdnslol -P 3333 -h localhost --protocol=tcp dnslol-results
+    mysql -u dnslol -pdnslol -P 3303 -h 10.10.10.1 --protocol=tcp dnslol-results
 ```
 
 You can view the database logs by running:
@@ -86,9 +85,7 @@ You can view the database logs by running:
 ```
 
 **Important** - By default the `dnslol` user has a **hardcoded password** equal
-to the username. Make sure your host machine has adqueate firewall policies to
-prevent the DB container from being accessed externally! Never use the `dnslol`
-DB container in a production setting!
+to the username. Never use the `dnslol` DB container in a production setting!
 
 ## Metrics
 
