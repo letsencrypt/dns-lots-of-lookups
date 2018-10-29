@@ -1,0 +1,17 @@
+version: '2'
+services:
+  db:
+    image: mariadb:10.3
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "dnslol-results"
+      MYSQL_USER: "dnslol"
+      MYSQL_PASSWORD: "dnslol"
+    networks:
+      static-network:
+        ipv4_address: 10.10.10.2
+networks:
+  static-network:
+    ipam:
+      config:
+        - subnet: 10.10.10.0/16

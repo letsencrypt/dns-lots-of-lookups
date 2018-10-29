@@ -6,8 +6,8 @@
 
 DNS Lots-of-Lookups (DNSLOL) is a small command line utility suitable for doing
 large-scale DNS lookups quickly. In particular DNSLOL is tailored towards doing
-comparative analysis of the results of doing these lookups through differently
-configured recursive DNS resolvers.
+comparative analysis of the results of doing these lookups with different DNS
+servers.
 
 ## Install
 
@@ -33,7 +33,7 @@ vendored dependencies.
    and `TXT` queries for every domain in `input_domains.txt`, using two local
    recursive resolvers (one on port `1053`, and one on `1054`). It will
    gradually spawn new goroutines every `15s`, up to a maximum of `4000`
-   goroutines. Prometheus metrics will be exported on the debug address,
+   goroutines. Prometheus metrics will be exported on the metrics address,
    `http://127.0.0.1:6363/metrics`.
 
 ```bash
@@ -43,9 +43,49 @@ vendored dependencies.
     -servers 127.0.0.1:1053,127.0.0.1:1054 \
     -parallel 4000 \
     -spawnInterval 15s \
-    -debugAddr 127.0.0.1:6363 \
+    -metricsAddr 127.0.0.1:6363 \
     < input_domains.txt
 ```
+
+## Database
+
+In the future, DNSLOL will support writing results to a MariaDB database. If you
+don't have one of these handy, a
+[`docker-compose.yml`](https://github.com/letsencrypt/dns-lots-of-lookups/blob/master/docker-compose.yml)
+file is provided that can quickly create a MariaDB container for `dnslol` to
+use.
+
+Before trying to use the docker compose file make sure you have Docker Engine
+1.10.0+ and Docker Compose 1.6.0+ installed. If you do not, you can follow
+Docker's [installation instructions](https://docs.docker.com/compose/install/).
+
+You can start the database by running:
+
+```bash
+    docker-compose up
+```
+
+This will start a `dnslotsoflookups_db_1` container running MariaDB. A `dnslol`
+database user will be created with the password `dnslol`. This user will be
+granted superuser privileges for the `dnslol-results` database. The database 
+will be listening on the private IP `10.10.10.2` on port `3306`.
+
+You can verify the database is running or perform manual queries using the
+`mysql` command line tool (You may need to install this command on your host
+machine separately if you don't already have it):
+
+```bash
+    mysql -u dnslol -pdnslol -P 3306 -h 10.10.10.2 --protocol=tcp dnslol-results
+```
+
+You can view the database logs by running:
+
+```bash
+    docker-compose logs db
+```
+
+**Important** - By default the `dnslol` user has a **hardcoded password** equal
+to the username. Never use the `dnslol` DB container in a production setting!
 
 ## Metrics
 
