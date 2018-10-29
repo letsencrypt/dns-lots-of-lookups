@@ -65,10 +65,6 @@ var (
 		"checkTXT",
 		false,
 		"Whether to check TXT records")
-	checkCAAFlag = flag.Bool(
-		"checkCAA",
-		false,
-		"Lookup CAA records")
 	printResultsFlag = flag.Bool(
 		"print",
 		true,
@@ -151,7 +147,6 @@ func main() {
 		CheckA:        *checkAFlag,
 		CheckAAAA:     *checkAAAAFlag,
 		CheckTXT:      *checkTXTFlag,
-		CheckCAA:      *checkCAAFlag,
 		PrintResults:  *printResultsFlag,
 	}
 

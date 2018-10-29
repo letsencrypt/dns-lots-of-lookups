@@ -42,9 +42,6 @@ type Experiment struct {
 	CheckAAAA bool
 	// Whether or not to do queries for `_acme-challenge.` TXT records.
 	CheckTXT bool
-	// Whether or not to do multiple CAA queries (e.g. w/ tree-climbing) for
-	// domains.
-	CheckCAA bool
 	// Whether or not to print lookup results to stdout.
 	PrintResults bool
 }
@@ -74,10 +71,10 @@ func (e Experiment) Valid() error {
 	if e.SpawnRate < 1 {
 		return errors.New("Experiment must have a SpawnRate value greater than 1")
 	}
-	if !e.CheckA && !e.CheckAAAA && !e.CheckTXT && !e.CheckCAA {
+	if !e.CheckA && !e.CheckAAAA && !e.CheckTXT {
 		return errors.New(
-			"Experiment must have at least one CheckA, CheckAAAA, CheckTXT or " +
-				"CheckCAA set to true")
+			"Experiment must have at least one CheckA, CheckAAAA, or CheckTXT " +
+				"set to true")
 	}
 	return nil
 }
@@ -186,7 +183,7 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 
 // buildQueries creates queries for the given name, one per server. The types of
 // queries that are built depends on the Experiment's CheckA, CheckAAAA,
-// CheckTXT and CheckCAA settings.
+// and CheckTXT settings.
 func (e Experiment) buildQueries(name string, servers []string) []query {
 	// queryPerServer returns a list with one query per server for the given name
 	// and type.
@@ -214,16 +211,6 @@ func (e Experiment) buildQueries(name string, servers []string) []query {
 	if e.CheckTXT {
 		queries = append(queries,
 			queryPerServer(name, dns.TypeTXT)...)
-	}
-	if e.CheckCAA {
-		// We check CAA differently from other domains by splitting the individual
-		// domain labels up and mimicking CAA tree climbing by making a CAA query
-		// for each label for each server.
-		labels := strings.Split(name, ".")
-		for i := 0; i < len(labels); i++ {
-			queries = append(queries,
-				queryPerServer(strings.Join(labels[i:], "."), dns.TypeCAA)...)
-		}
 	}
 
 	return queries
@@ -260,17 +247,6 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) (string, bool, erro
 		// If the rcode wasn't a successful rcode, return its str form, a failure
 		// bool, and no error.
 		return rcodeStr, false, nil
-	}
-	for _, answer := range in.Answer {
-		// We additionally check that CAA records don't have a case mismatch
-		//
-		// TODO(@cpu): This smells like something that should be behind
-		// a flag/Experiment bool.
-		if caaR, ok := answer.(*dns.CAA); ok && strings.ToLower(caaR.Tag) != caaR.Tag {
-			// If there was a case mismatch return no rcode Str, a failure bool, and
-			// a manufactured error.
-			return "", false, fmt.Errorf("tag mismatch for %s: %s", strings.ToLower(caaR.Tag), caaR)
-		}
 	}
 	// Otherwise everything went well! Return the rcode str, a true success bool
 	// and no error.
