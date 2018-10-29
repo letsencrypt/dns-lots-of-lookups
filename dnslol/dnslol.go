@@ -162,7 +162,7 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 		// TODO(@cpu): This should be a separate function.
 		if e.PrintResults {
 			var line strings.Builder
-			fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s ",
+			fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s",
 				q.Server, q.Name, dns.TypeToString[q.Type])
 			if err != nil {
 				fmt.Fprintf(&line, " Error=%s", err.Error())
