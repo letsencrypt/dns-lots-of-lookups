@@ -69,6 +69,10 @@ var (
 		"print",
 		true,
 		"Print lookup results to stdout")
+	countFlag = flag.Int(
+		"count",
+		1,
+		"How many times to repeat the same query against each server")
 )
 
 // checkUlimit checks the *parallelFlag value against the system RLIMIT_NOFILE
@@ -138,6 +142,7 @@ func main() {
 		CheckAAAA:     *checkAAAAFlag,
 		CheckTXT:      *checkTXTFlag,
 		PrintResults:  *printResultsFlag,
+		Count:         *countFlag,
 	}
 
 	// Read domain names from standard in

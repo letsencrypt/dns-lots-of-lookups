@@ -51,10 +51,14 @@ type Experiment struct {
 	CheckTXT bool
 	// Whether or not to print lookup results to stdout.
 	PrintResults bool
+	// How many times to repeat the same query against each server
+	Count int
 
-	// TODO(@cpu): Document these
-	db      *sql.DB
-	id      int64
+	// A DB connection for storing results.
+	db *sql.DB
+	// The ID assigned by the DB for the Experiment row.
+	id int64
+	// The servers that the Experiment will query.
 	servers []server
 }
 
@@ -87,6 +91,9 @@ func (e Experiment) Valid() error {
 		return errors.New(
 			"Experiment must have at least one CheckA, CheckAAAA, or CheckTXT " +
 				"set to true")
+	}
+	if e.Count < 1 {
+		return errors.New("Experiment must have a Count greater than 0")
 	}
 	return nil
 }
@@ -195,7 +202,7 @@ func (e Experiment) saveQueryResult(q query, err error) {
 	}
 }
 
-// buildQueries creates queries for the given name, one per server. The types of
+// buildQueries creates queries for the given name, e.Count per server. The types of
 // queries that are built depends on the Experiment's CheckA, CheckAAAA,
 // and CheckTXT settings.
 func (e Experiment) buildQueries(name string) []query {
@@ -204,11 +211,13 @@ func (e Experiment) buildQueries(name string) []query {
 	queryPerServer := func(name string, typ uint16) []query {
 		var results []query
 		for _, server := range e.servers {
-			results = append(results, query{
-				Name:   name,
-				Type:   typ,
-				Server: server,
-			})
+			for i := 0; i < e.Count; i++ {
+				results = append(results, query{
+					Name:   name,
+					Type:   typ,
+					Server: server,
+				})
+			}
 		}
 		return results
 	}
