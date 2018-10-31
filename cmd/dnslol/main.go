@@ -27,7 +27,8 @@ var (
 		"Database connection URL")
 	dbMaxConnsFlag = flag.Int(
 		"dbMaxConns",
-		250)
+		250,
+		"Max number of concurrent database connections")
 	serversFlag = flag.String(
 		"servers",
 		"127.0.0.1:53",
