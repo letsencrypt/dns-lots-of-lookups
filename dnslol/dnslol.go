@@ -3,6 +3,7 @@
 package dnslol
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -12,9 +13,15 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/miekg/dns"
 	prom "github.com/prometheus/client_golang/prometheus"
 )
+
+type server struct {
+	id      int64
+	address string
+}
 
 // an Experiment holds settings related to the lookups that will be performed
 // when the Experiment is started with the `Start` function.
@@ -44,6 +51,11 @@ type Experiment struct {
 	CheckTXT bool
 	// Whether or not to print lookup results to stdout.
 	PrintResults bool
+
+	// TODO(@cpu): Document these
+	db      *sql.DB
+	id      int64
+	servers []server
 }
 
 // Valid checks whether a given Experiment is valid. It returns an error if the
@@ -82,8 +94,7 @@ func (e Experiment) Valid() error {
 // A query is a struct holding a name to query for, a type to request, and the
 // address of the DNS server to be queried.
 type query struct {
-	// Hostname/port of a DNS server to query
-	Server string
+	Server server
 	// The name to query the server for
 	Name string
 	// The DNS record type to ask the server for
@@ -134,34 +145,54 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	// Run the built queries, populating the prometheus result stat according to
 	// the results
 	for _, q := range queries {
-		stats.attempts.With(prom.Labels{"server": q.Server}).Add(1)
-		resultLabels := prom.Labels{"server": q.Server}
+		stats.attempts.With(prom.Labels{"server": q.Server.address}).Add(1)
+		resultLabels := prom.Labels{"server": q.Server.address}
 		err := e.queryOne(dnsClient, q)
-		outcome := "bad"
 		// If the result was an error, put the error string in the result label
 		if err != nil {
 			resultLabels["result"] = err.Error()
 		} else {
 			// If the result was successful, increment the success stat and put
 			// "ok" in the result label
-			stats.successes.With(prom.Labels{"server": q.Server}).Add(1)
+			stats.successes.With(prom.Labels{"server": q.Server.address}).Add(1)
 			resultLabels["result"] = "ok"
-			outcome = "ok"
 		}
 		// TODO(@cpu): This should be a separate function.
 		if e.PrintResults {
-			var line strings.Builder
-			fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s",
-				q.Server, q.Name, dns.TypeToString[q.Type])
-			if err != nil {
-				fmt.Fprintf(&line, " Error=%s", err.Error())
-			}
-			fmt.Fprintf(&line, " Outcome=%s", outcome)
-			log.Printf("%s", line.String())
+			printQueryResult(q, err)
 		}
 		stats.results.With(resultLabels).Add(1)
+		e.saveQueryResult(q, err)
 	}
 	return nil
+}
+
+func printQueryResult(q query, err error) {
+	var line strings.Builder
+	fmt.Fprintf(&line, "Server=%s Name=%s QueryType=%s",
+		q.Server.address, q.Name, dns.TypeToString[q.Type])
+	if err != nil {
+		fmt.Fprintf(&line, " Error=%s Outcome=bad", err.Error())
+	} else {
+		fmt.Fprintf(&line, " Outcome=ok")
+	}
+	log.Printf("%s", line.String())
+}
+
+func (e Experiment) saveQueryResult(q query, err error) {
+	var errBlob []byte
+	if err != nil {
+		errBlob = []byte(err.Error())
+	}
+
+	_, err = e.db.Exec(
+		"INSERT INTO results (`name`, `type`, `error`, `serverID`, `experimentID`) VALUES (?, ?, ?, ?, ?);",
+		q.Name, q.Type, errBlob, q.Server.id, e.id)
+	if err != nil {
+		log.Fatalf(
+			"Failed to insert result for %q query to %q: %v\n",
+			q.Name, q.Server.address, err)
+	}
 }
 
 // buildQueries creates queries for the given name, one per server. The types of
@@ -172,7 +203,7 @@ func (e Experiment) buildQueries(name string) []query {
 	// and type.
 	queryPerServer := func(name string, typ uint16) []query {
 		var results []query
-		for _, server := range e.Servers {
+		for _, server := range e.servers {
 			results = append(results, query{
 				Name:   name,
 				Type:   typ,
@@ -205,8 +236,6 @@ func (e Experiment) buildQueries(name string) []query {
 // other than RcodeSuccess, a false bool and a nil error or an empty rcode
 // string, a false bool and a non-nil error. In all cases the queryTimes latency
 // stat is updated for the server and query type performed.
-//
-// TODO(@cpu): Update comment
 func (e Experiment) queryOne(dnsClient *dns.Client, q query) error {
 	// Build a DNS msg based on the query details
 	typStr := dns.TypeToString[q.Type]
@@ -214,9 +243,9 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) error {
 	m.SetQuestion(dns.Fqdn(q.Name), q.Type)
 
 	// Query the server and record the time taken
-	in, rtt, err := dnsClient.Exchange(m, q.Server)
+	in, rtt, err := dnsClient.Exchange(m, q.Server.address)
 	stats.queryTimes.With(prom.Labels{
-		"server": q.Server,
+		"server": q.Server.address,
 		"type":   typStr}).Observe(rtt.Seconds())
 	if err != nil {
 		if ne, ok := err.(*net.OpError); ok && ne.Timeout() {
@@ -235,6 +264,76 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) error {
 	return nil
 }
 
+func (e *Experiment) saveExperiment() error {
+	if e.db == nil {
+		return errors.New("saveExperiment requires a non-nil db")
+	}
+
+	// Create the experiment in the DB
+	result, err := e.db.Exec(
+		`INSERT INTO experiments (start, commandline) VALUES (?, ?);`,
+		time.Now(),
+		e.CommandLine)
+	if err != nil {
+		return err
+	}
+	e.id, err = result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	// Then create the associated servers
+	savedServers := make([]server, len(e.Servers))
+	for i, srvAddr := range e.Servers {
+		result, err = e.db.Exec(
+			`INSERT INTO servers (address, experimentID) VALUES (?, ?);`,
+			srvAddr, e.id)
+		if err != nil {
+			return err
+		}
+		srvID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		savedServers[i] = server{
+			id:      srvID,
+			address: srvAddr,
+		}
+	}
+	e.servers = savedServers
+	return nil
+}
+
+// End updates the Experiment's end date and closes the Experiment's database
+// connection or return an error.
+func (e Experiment) Close() error {
+	if e.db == nil {
+		return errors.New("Close requires a non-nil db")
+	}
+	if e.id == 0 {
+		return errors.New("Experiment does not have an ID")
+	}
+
+	// Update the experiment in the DB
+	result, err := e.db.Exec(
+		`UPDATE experiments SET end=? WHERE id=?;`,
+		time.Now(),
+		e.id)
+	if err != nil {
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return fmt.Errorf(
+			"Expected to update one experiment row, actually updated %d", updated)
+	}
+
+	return e.db.Close()
+}
+
 // Start will run the given Experiment by initializing and running a metrics
 // server and then spawning goroutines to process queries according to the
 // Experiment parameters. The spawned goroutines will read names to query from
@@ -242,7 +341,7 @@ func (e Experiment) queryOne(dnsClient *dns.Client, q query) error {
 // the spawned worker goroutines will call the provided WaitGroup's Done
 // function. An error is returned from Start if the given Experiment is not
 // valid.
-func Start(e Experiment, names <-chan string, wg *sync.WaitGroup) error {
+func Start(e *Experiment, names <-chan string, wg *sync.WaitGroup, dsn string) error {
 	if err := e.Valid(); err != nil {
 		return err
 	}
@@ -256,13 +355,27 @@ func Start(e Experiment, names <-chan string, wg *sync.WaitGroup) error {
 		}
 	}()
 
+	// Connect to the database
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return err
+	}
+	e.db = db
+
+	// Store the experiment to get an ID and to populate the `servers` slice with
+	// IDs
+	err = e.saveExperiment()
+	if err != nil {
+		log.Fatalf("error saving experiment to db: %v\n", err)
+	}
+
 	dnsClient := &dns.Client{
 		Net:         e.Proto,
 		ReadTimeout: e.Timeout,
 	}
 
 	// Spawn worker goroutines for the experiment
-	go spawn(e, dnsClient, names, wg)
+	go spawn(*e, dnsClient, names, wg)
 
 	return nil
 }

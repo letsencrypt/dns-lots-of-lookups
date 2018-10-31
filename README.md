@@ -55,9 +55,14 @@ don't have one of these handy, a
 file is provided that can quickly create a MariaDB container for `dnslol` to
 use.
 
-Before trying to use the docker compose file make sure you have Docker Engine
-1.10.0+ and Docker Compose 1.6.0+ installed. If you do not, you can follow
-Docker's [installation instructions](https://docs.docker.com/compose/install/).
+If you do have an existing DB handy you will need to change the `-db` flag
+provided to `dnslol` and ensure the database has been initialized with the SQL
+found in `db-schema.sql`
+
+Otherwise, before trying to use the docker compose file make sure you have
+Docker Engine 1.10.0+ and Docker Compose 1.6.0+ installed. If you do not, you
+can follow Docker's [installation
+instructions](https://docs.docker.com/compose/install/).
 
 You can start the database by running:
 
@@ -70,12 +75,18 @@ database user will be created with the password `dnslol`. This user will be
 granted superuser privileges for the `dnslol-results` database. The database 
 will be listening on the private IP `10.10.10.2` on port `3306`.
 
-You can verify the database is running or perform manual queries using the
-`mysql` command line tool (You may need to install this command on your host
-machine separately if you don't already have it):
+You will need to create the initial database structure the first time you start
+the database container using the `mysql` command line tool (You may need to
+install this command on your host machine separately if you don't already have it):
 
 ```bash
-    mysql -u dnslol -pdnslol -P 3306 -h 10.10.10.2 --protocol=tcp dnslol-results
+    mysql \
+      -u dnslol \
+      -pdnslol \
+      -P 3306 \
+      -h 10.10.10.2 \
+      --protocol=tcp \
+      dnslol-results < db-schema.sql
 ```
 
 You can view the database logs by running:
@@ -91,10 +102,10 @@ to the username. Never use the `dnslol` DB container in a production setting!
 
 DNSLOL exports several [Prometheus](https://prometheus.io/) metrics on the configured `-debugAddr` that can be used to monitor the performance and results of a `dnslol` run.
 
-| Metric Name      | Metric Type   | Labels    | Description           |
-| ---------------- |---------------|-----------|:----------------------|
-| `lookup_results` | Counter Vec   | `result`  | Result count per query rcode or error result |
-| `attempts`       | Counter       |           | Number of lookup attempts made |
-| `successes`      | Counter       |           | Number of lookup successes |
-| `queryTime`      | SummaryVec    | `type`    | Query duration (seconds) per type |
-| `commandLine`    | GaugeVec      | `line`    | Command line invocation of the `dnslol` tool |
+| Metric Name      | Metric Type   | Labels              | Description                                  |
+| ---------------- |---------------|---------------------|:---------------------------------------------|
+| `lookup_results` | Counter Vec   | `server`, `result`  | Result count per query rcode or error result |
+| `attempts`       | Counter       | `server`            | Number of lookup attempts made               |
+| `successes`      | Counter       | `server`            | Number of lookup successes                   |
+| `queryTime`      | SummaryVec    | `server`, `type`    | Query duration (seconds) per type            |
+| `commandLine`    | GaugeVec      | `server`, `line`    | Command line invocation of the `dnslol` tool |

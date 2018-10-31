@@ -21,6 +21,10 @@ var (
 		"metricsAddr",
 		":6363",
 		"Bind address for HTTP metrics server")
+	dbConnFlag = flag.String(
+		"db",
+		"dnslol:dnslol@tcp(10.10.10.2:3306)/dnslol-results",
+		"Database connection URL")
 	serversFlag = flag.String(
 		"servers",
 		"127.0.0.1:53",
@@ -152,10 +156,17 @@ func main() {
 
 	// Start the experiment - it will initially be blocked waiting for domain
 	// names
-	err = dnslol.Start(exp, names, &wg)
+	err = dnslol.Start(&exp, names, &wg, *dbConnFlag)
 	if err != nil {
 		log.Fatalf("Error running experiment: %v\n", err)
 	}
+	// Close the experiment's database connection when everything is finished.
+	defer func() {
+		err := exp.Close()
+		if err != nil {
+			log.Fatalf("Error closing experiment: %v\n", err)
+		}
+	}()
 
 	// Feed each of the domain names from stdin to the experiment for processing
 	for _, name := range strings.Split(string(stdinBytes), "\n") {
