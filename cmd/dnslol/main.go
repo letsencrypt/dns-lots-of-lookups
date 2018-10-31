@@ -25,6 +25,9 @@ var (
 		"db",
 		"dnslol:dnslol@tcp(10.10.10.2:3306)/dnslol-results",
 		"Database connection URL")
+	dbMaxConnsFlag = flag.Int(
+		"dbMaxConns",
+		250)
 	serversFlag = flag.String(
 		"servers",
 		"127.0.0.1:53",
@@ -161,7 +164,7 @@ func main() {
 
 	// Start the experiment - it will initially be blocked waiting for domain
 	// names
-	err = dnslol.Start(&exp, names, &wg, *dbConnFlag)
+	err = dnslol.Start(&exp, names, &wg, *dbConnFlag, *dbMaxConnsFlag)
 	if err != nil {
 		log.Fatalf("Error running experiment: %v\n", err)
 	}

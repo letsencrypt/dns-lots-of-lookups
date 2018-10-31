@@ -350,7 +350,7 @@ func (e Experiment) Close() error {
 // the spawned worker goroutines will call the provided WaitGroup's Done
 // function. An error is returned from Start if the given Experiment is not
 // valid.
-func Start(e *Experiment, names <-chan string, wg *sync.WaitGroup, dsn string) error {
+func Start(e *Experiment, names <-chan string, wg *sync.WaitGroup, dsn string, maxConns int) error {
 	if err := e.Valid(); err != nil {
 		return err
 	}
@@ -369,6 +369,9 @@ func Start(e *Experiment, names <-chan string, wg *sync.WaitGroup, dsn string) e
 	if err != nil {
 		return err
 	}
+	db.SetMaxOpenConns(maxConns)
+	// Reuse connections forever
+	db.SetConnMaxLifetime(0)
 	e.db = db
 
 	// Store the experiment to get an ID and to populate the `servers` slice with
