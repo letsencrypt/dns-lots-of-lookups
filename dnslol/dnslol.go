@@ -164,7 +164,6 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 			stats.successes.With(prom.Labels{"server": q.Server.address}).Add(1)
 			resultLabels["result"] = "ok"
 		}
-		// TODO(@cpu): This should be a separate function.
 		if e.PrintResults {
 			printQueryResult(q, err)
 		}
