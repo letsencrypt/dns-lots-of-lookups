@@ -8,7 +8,7 @@ CREATE TABLE `experiments` (
 	`end` DATETIME,
 	`commandline` VARCHAR(255) NOT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `servers` (
 	`id` INT NOT NULL AUTO_INCREMENT,
@@ -16,7 +16,7 @@ CREATE TABLE `servers` (
 	`experimentID` INT NOT NULL,
 	PRIMARY KEY (`id`),
 	CONSTRAINT `servers_experimentID_experiments` FOREIGN KEY (`experimentID`) REFERENCES `experiments` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `results` (
 	`id` INT NOT NULL AUTO_INCREMENT,
@@ -28,4 +28,4 @@ CREATE TABLE `results` (
 	PRIMARY KEY (`id`),
 	CONSTRAINT `results_serverID_servers` FOREIGN KEY (`serverID`) REFERENCES servers (`id`),
 	CONSTRAINT `results_experimentID_experiments` FOREIGN KEY (`experimentID`) REFERENCES experiments (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
