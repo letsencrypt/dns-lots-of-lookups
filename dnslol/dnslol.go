@@ -18,6 +18,10 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	maxInsertRetries = 3
+)
+
 type server struct {
 	id      int64
 	address string
@@ -191,13 +195,18 @@ func (e Experiment) saveQueryResult(q query, err error) {
 		errBlob = []byte(err.Error())
 	}
 
-	_, err = e.db.Exec(
-		"INSERT INTO results (`name`, `type`, `error`, `serverID`, `experimentID`) VALUES (?, ?, ?, ?, ?);",
-		q.Name, q.Type, errBlob, q.Server.id, e.id)
+	for i := 0; i < maxInsertRetries; i++ {
+		_, err = e.db.Exec(
+			"INSERT INTO results (`name`, `type`, `error`, `serverID`, `experimentID`) VALUES (?, ?, ?, ?, ?);",
+			q.Name, q.Type, errBlob, q.Server.id, e.id)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		log.Fatalf(
-			"Failed to insert result for %q query to %q: %v\n",
-			q.Name, q.Server.address, err)
+			"Failed to insert result for %q query to %q after %d tries: %v\n",
+			q.Name, q.Server.address, maxInsertRetries, err)
 	}
 }
 
