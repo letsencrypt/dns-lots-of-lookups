@@ -107,6 +107,25 @@ func reverseName(domain string) string {
 	return strings.Join(labels, ".")
 }
 
+// isDNSCharacter returns true if the given byte is a valid character for a DNS
+// name.
+func isDNSCharacter(ch byte) bool {
+	return ('a' <= ch && ch <= 'z') ||
+		('A' <= ch && ch <= 'Z') ||
+		('0' <= ch && ch <= '9') ||
+		ch == '.' || ch == '-'
+}
+
+// isValidName returns true if the given name only has valid DNS characters.
+func isValidName(domain string) bool {
+	for _, ch := range []byte(domain) {
+		if !isDNSCharacter(ch) {
+			return false
+		}
+	}
+	return true
+}
+
 // parseServers splits a raw serversFlag string containing one or more DNS
 // server addresses, returning a slice of individual server addresses. If no
 // port is specified in the server addresses it is assumed to be port 53 (the
@@ -182,10 +201,13 @@ func main() {
 		if name == "" {
 			continue
 		}
-		wg.Add(1)
 		if *reverseNamesFlag {
 			name = reverseName(name)
 		}
+		if !isValidName(name) {
+			log.Fatalf("Domain %q is not a valid ASCII encoded domain name\n", name)
+		}
+		wg.Add(1)
 		names <- name
 	}
 
