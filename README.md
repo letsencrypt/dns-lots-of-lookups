@@ -53,11 +53,12 @@ vendored dependencies.
 All of the domain names must be in ASCII form. Internationalized Domain Names
 (IDN) must be converted to ASCII before using `dnslol` according to the
 [IDNA2008 encoding method](http://unicode.org/reports/tr46/#ToASCII). You may
-find using the commonly packaged `idn` command line tool to convert your input
-domains helpful. E.g.:
+find using [this small Go
+tool](https://gist.github.com/cpu/9e232491edb5fd7db18c2e1926ee532c) helpful for
+converting IDN domains to ASCII:
 
 ```bash
-   cat raw_input_domains.txt | idn -a > input_domains.txt
+   cat raw_input_domains.txt | go run idna-encode.go > input_domains.txt
 ```
 
 `dnslol` can read input domains in label-wise reversed form if you provide the
