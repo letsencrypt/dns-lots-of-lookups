@@ -47,11 +47,28 @@ vendored dependencies.
     < input_domains.txt
 ```
 
+## Input
+
+`dnslol` expects to read fully qualified domain names as input to standard in.
+All of the domain names must be in ASCII form. Internationalized Domain Names
+(IDN) must be converted to ASCII before using `dnslol` according to the
+[IDNA2008 encoding method](http://unicode.org/reports/tr46/#ToASCII). You may
+find using the commonly packaged `idn` command line tool to convert your input
+domains helpful. E.g.:
+
+```bash
+   cat raw_input_domains.txt | idn -a > input_domains.txt
+```
+
+`dnslol` can read input domains in label-wise reversed form if you provide the
+`-reverse` label. This will automatically convert inputs like
+`org.letsencrypt.www` to `www.letsencrypt.org`.
+
 ## Database
 
-In the future, DNSLOL will support writing results to a MariaDB database. If you
-don't have one of these handy, a
-[`docker-compose.yml`](https://github.com/letsencrypt/dns-lots-of-lookups/blob/master/docker-compose.yml)
+DNSLOL will write results to a MariaDB database. If you don't have one of these
+handy,
+a [`docker-compose.yml`](https://github.com/letsencrypt/dns-lots-of-lookups/blob/master/docker-compose.yml)
 file is provided that can quickly create a MariaDB container for `dnslol` to
 use.
 
