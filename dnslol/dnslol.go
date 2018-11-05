@@ -248,11 +248,10 @@ func (e Experiment) buildQueries(name string) []query {
 }
 
 // queryOne performs one single query using the given dnsClient. For successful
-// queries (e.g. resulting in a RcodeSuccess) return that rcode string, a true
-// bool and a nil error. Unsuccessful queries either return an rcode string
-// other than RcodeSuccess, a false bool and a nil error or an empty rcode
-// string, a false bool and a non-nil error. In all cases the queryTimes latency
-// stat is updated for the server and query type performed.
+// queries (e.g. resulting in a RcodeSuccess) nil is returned. Queries that
+// result in an error, or an Rcode other than RcodeSuccess return an error. In
+// all cases the queryTimes latency stat is updated for the server and query
+// type performed.
 func (e Experiment) queryOne(dnsClient *dns.Client, q query) error {
 	// Build a DNS msg based on the query details
 	typStr := dns.TypeToString[q.Type]
@@ -378,8 +377,6 @@ func Start(e *Experiment, names <-chan string, wg *sync.WaitGroup, dsn string, m
 		return err
 	}
 	db.SetMaxOpenConns(maxConns)
-	// Reuse connections forever
-	db.SetConnMaxLifetime(0)
 	e.db = db
 
 	// Store the experiment to get an ID and to populate the `servers` slice with
