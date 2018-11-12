@@ -21,6 +21,14 @@ var (
 		"metricsAddr",
 		":6363",
 		"Bind address for HTTP metrics server")
+	dbConnFlag = flag.String(
+		"db",
+		"dnslol:dnslol@tcp(10.10.10.2:3306)/dnslol-results",
+		"Database connection URL")
+	dbMaxConnsFlag = flag.Int(
+		"dbMaxConns",
+		250,
+		"Max number of concurrent database connections")
 	serversFlag = flag.String(
 		"servers",
 		"127.0.0.1:53",
@@ -65,6 +73,10 @@ var (
 		"print",
 		true,
 		"Print lookup results to stdout")
+	countFlag = flag.Int(
+		"count",
+		1,
+		"How many times to repeat the same query against each server")
 )
 
 // checkUlimit checks the *parallelFlag value against the system RLIMIT_NOFILE
@@ -93,6 +105,25 @@ func reverseName(domain string) string {
 		labels[i], labels[j] = labels[j], labels[i]
 	}
 	return strings.Join(labels, ".")
+}
+
+// isDNSCharacter returns true if the given byte is a valid character for a DNS
+// name.
+func isDNSCharacter(ch byte) bool {
+	return ('a' <= ch && ch <= 'z') ||
+		('A' <= ch && ch <= 'Z') ||
+		('0' <= ch && ch <= '9') ||
+		ch == '.' || ch == '-'
+}
+
+// isValidName returns true if the given name only has valid DNS characters.
+func isValidName(domain string) bool {
+	for _, ch := range []byte(domain) {
+		if !isDNSCharacter(ch) {
+			return false
+		}
+	}
+	return true
 }
 
 // parseServers splits a raw serversFlag string containing one or more DNS
@@ -134,6 +165,7 @@ func main() {
 		CheckAAAA:     *checkAAAAFlag,
 		CheckTXT:      *checkTXTFlag,
 		PrintResults:  *printResultsFlag,
+		Count:         *countFlag,
 	}
 
 	// Read domain names from standard in
@@ -152,20 +184,30 @@ func main() {
 
 	// Start the experiment - it will initially be blocked waiting for domain
 	// names
-	err = dnslol.Start(exp, names, &wg)
+	err = dnslol.Start(&exp, names, &wg, *dbConnFlag, *dbMaxConnsFlag)
 	if err != nil {
 		log.Fatalf("Error running experiment: %v\n", err)
 	}
+	// Close the experiment's database connection when everything is finished.
+	defer func() {
+		err := exp.Close()
+		if err != nil {
+			log.Fatalf("Error closing experiment: %v\n", err)
+		}
+	}()
 
 	// Feed each of the domain names from stdin to the experiment for processing
 	for _, name := range strings.Split(string(stdinBytes), "\n") {
 		if name == "" {
 			continue
 		}
-		wg.Add(1)
 		if *reverseNamesFlag {
 			name = reverseName(name)
 		}
+		if !isValidName(name) {
+			log.Fatalf("Domain %q is not a valid ASCII encoded domain name\n", name)
+		}
+		wg.Add(1)
 		names <- name
 	}
 

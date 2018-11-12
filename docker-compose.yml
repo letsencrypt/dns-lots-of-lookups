@@ -2,6 +2,7 @@ version: '2'
 services:
   db:
     image: mariadb:10.3
+    command: --max-connections=300
     environment:
       MYSQL_RANDOM_ROOT_PASSWORD: "yes"
       MYSQL_DATABASE: "dnslol-results"
