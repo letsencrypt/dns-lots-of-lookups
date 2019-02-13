@@ -108,12 +108,12 @@ func reverseName(domain string) string {
 }
 
 // isDNSCharacter returns true if the given byte is a valid character for a DNS
-// name.
+// name, or is a wildcard label ("*").
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
 		('A' <= ch && ch <= 'Z') ||
 		('0' <= ch && ch <= '9') ||
-		ch == '.' || ch == '-'
+		ch == '.' || ch == '-' || ch == '*'
 }
 
 // isValidName returns true if the given name only has valid DNS characters.
