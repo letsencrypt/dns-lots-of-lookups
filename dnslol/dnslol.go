@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"strings"
@@ -155,27 +156,40 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 	// Build the queries for this name for each of the nameservers
 	queries := e.buildQueries(name)
 
+	// Randomize the queries so we don't consistently query one of the nameservers
+	// first, which could introduce a slight bias.
+	rand.Shuffle(len(queries), func(i, j int) {
+		queries[i], queries[j] = queries[j], queries[i]
+	})
+	var wg sync.WaitGroup
 	// Run the built queries, populating the prometheus result stat according to
 	// the results
 	for _, q := range queries {
-		stats.attempts.With(prom.Labels{"server": q.Server.address}).Add(1)
-		resultLabels := prom.Labels{"server": q.Server.address}
-		err := e.queryOne(dnsClient, q)
-		// If the result was an error, put the error string in the result label
-		if err != nil {
-			resultLabels["result"] = err.Error()
-		} else {
-			// If the result was successful, increment the success stat and put
-			// "ok" in the result label
-			stats.successes.With(prom.Labels{"server": q.Server.address}).Add(1)
-			resultLabels["result"] = "ok"
-		}
-		if e.PrintResults {
-			printQueryResult(q, err)
-		}
-		stats.results.With(resultLabels).Add(1)
-		e.saveQueryResult(q, err)
+		wg.Add(1)
+		// Run the queries on a goroutine so slowness in one server doesn't impact
+		// the submission rate to the other server.
+		go func(q query) {
+			stats.attempts.With(prom.Labels{"server": q.Server.address}).Add(1)
+			resultLabels := prom.Labels{"server": q.Server.address}
+			err := e.queryOne(dnsClient, q)
+			// If the result was an error, put the error string in the result label
+			if err != nil {
+				resultLabels["result"] = err.Error()
+			} else {
+				// If the result was successful, increment the success stat and put
+				// "ok" in the result label
+				stats.successes.With(prom.Labels{"server": q.Server.address}).Add(1)
+				resultLabels["result"] = "ok"
+			}
+			if e.PrintResults {
+				printQueryResult(q, err)
+			}
+			stats.results.With(resultLabels).Add(1)
+			e.saveQueryResult(q, err)
+			wg.Done()
+		}(q)
 	}
+	wg.Wait()
 	return nil
 }
 
