@@ -205,7 +205,7 @@ func main() {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error reading names from standard input: %s\n", err)
 	}
 
 	// Close the names channel and wait for the experiment to be finished
