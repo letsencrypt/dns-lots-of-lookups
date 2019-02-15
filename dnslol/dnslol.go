@@ -139,7 +139,7 @@ func spawn(exp Experiment, dnsClient *dns.Client, names <-chan string, wg *sync.
 
 // runQueries will build & execute queries for the given name based on the
 // Experiment's settings. The queries will be made with the provided dnsClient
-// and directed to the Experiment's DNS Servers the. Each query performed by
+// and directed to the Experiment's DNS Servers. Each query performed by
 // runQueries will increment the "attempts" stat for the servers queried.
 // A "result" stat will be incremented based on the result of the query for the
 // servers queried. Successful queries will increment the "successes" stat for
