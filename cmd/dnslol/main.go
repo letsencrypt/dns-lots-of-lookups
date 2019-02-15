@@ -2,9 +2,9 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	_ "net/http/pprof"
 	"os"
@@ -108,12 +108,12 @@ func reverseName(domain string) string {
 }
 
 // isDNSCharacter returns true if the given byte is a valid character for a DNS
-// name.
+// name, or is a wildcard label ("*").
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
 		('A' <= ch && ch <= 'Z') ||
 		('0' <= ch && ch <= '9') ||
-		ch == '.' || ch == '-'
+		ch == '.' || ch == '-' || ch == '*'
 }
 
 // isValidName returns true if the given name only has valid DNS characters.
@@ -168,15 +168,6 @@ func main() {
 		Count:         *countFlag,
 	}
 
-	// Read domain names from standard in
-	//
-	// TODO(@cpu): It would be better to stream stdin into the names channel so we
-	// don't have to consume the entire stdin input into memory at startup.
-	stdinBytes, err := ioutil.ReadAll(os.Stdin)
-	if err != nil {
-		log.Fatalf("Error reading names from standard in: %v\n", err)
-	}
-
 	// Create a channel for feeding domain names to the experiment
 	names := make(chan string)
 	// Create a waitgroup so we can tell when all domain names have been processed
@@ -184,7 +175,7 @@ func main() {
 
 	// Start the experiment - it will initially be blocked waiting for domain
 	// names
-	err = dnslol.Start(&exp, names, &wg, *dbConnFlag, *dbMaxConnsFlag)
+	err := dnslol.Start(&exp, names, &wg, *dbConnFlag, *dbMaxConnsFlag)
 	if err != nil {
 		log.Fatalf("Error running experiment: %v\n", err)
 	}
@@ -196,8 +187,10 @@ func main() {
 		}
 	}()
 
-	// Feed each of the domain names from stdin to the experiment for processing
-	for _, name := range strings.Split(string(stdinBytes), "\n") {
+	// Read domain names from standard input
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		name := scanner.Text()
 		if name == "" {
 			continue
 		}
@@ -209,6 +202,10 @@ func main() {
 		}
 		wg.Add(1)
 		names <- name
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatalf("Error reading names from standard input: %s\n", err)
 	}
 
 	// Close the names channel and wait for the experiment to be finished

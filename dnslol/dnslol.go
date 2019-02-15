@@ -151,6 +151,8 @@ func (e Experiment) runQueries(dnsClient *dns.Client, name string) error {
 		return errors.New("runQueries requires a non-nil dnsClient instance")
 	}
 
+	name = strings.TrimLeft(name, "*.")
+
 	// Build the queries for this name for each of the nameservers
 	queries := e.buildQueries(name)
 
