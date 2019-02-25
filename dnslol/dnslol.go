@@ -27,8 +27,8 @@ type server struct {
 	address string
 }
 
-// an Experiment holds settings related to the lookups that will be performed
-// when the Experiment is started with the `Start` function.
+// Experiment is a struct that holds settings related to the lookups that will
+// be performed when the Experiment is started with the `Start` function.
 type Experiment struct {
 	// The HTTP bind address for the Prometheus metrics server.
 	MetricsAddr string
@@ -335,7 +335,7 @@ func (e *Experiment) saveExperiment() error {
 	return nil
 }
 
-// End updates the Experiment's end date and closes the Experiment's database
+// Close updates the Experiment's end date and closes the Experiment's database
 // connection or return an error.
 func (e Experiment) Close() error {
 	if e.db == nil {
