@@ -1,6 +1,8 @@
 # DNS Lots-of-Lookups (DNSLOL)
 
 [![Build Status](https://travis-ci.org/letsencrypt/dns-lots-of-lookups.svg?branch=master)](https://travis-ci.org/letsencrypt/dns-lots-of-lookups)
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/dns-lots-of-lookups/badge.svg)](https://coveralls.io/github/letsencrypt/dns-lots-of-lookups)
+[![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/dns-lots-of-lookups)](https://goreportcard.com/report/github.com/letsencrypt/dns-lots-of-lookups)
 [![GolangCI](https://golangci.com/badges/github.com/letsencrypt/dns-lots-of-lookups.svg)](https://golangci.com/r/github.com/letsencrypt/dns-lots-of-lookups)
 
 
