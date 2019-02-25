@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/miekg/dns"
 	prom "github.com/prometheus/client_golang/prometheus"
 )
