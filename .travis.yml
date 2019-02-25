@@ -16,6 +16,8 @@ install:
   - go install -mod=vendor -v -race ./...
 
 script:
+  - set -e
+  - go mod download
   - golangci-lint run
   - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
   - goveralls -coverprofile=coverage.out -service=travis-ci
